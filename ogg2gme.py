@@ -12,6 +12,8 @@ import os
 import re
 import shutil
 
+version = "0.1.9"
+
 # Changes:
 # v0.1.3:
 # 2015-11-11: Allow sample names which start with a digit.
@@ -318,7 +320,6 @@ def buildOidTable(yamlFileName, codesYamlFileName, productId, tttool):
     """Generate oid-table PNG.
     """
     columns = options.num_columns
-    numOidsPerPage = 16 * columns
     minAdditionalOids = options.num_additional_oids
     oid_orig_dir = "oid_orig"
     oid_box_dir = "oid_box"
@@ -327,7 +328,10 @@ def buildOidTable(yamlFileName, codesYamlFileName, productId, tttool):
     stopSymbolFile = dataDir + "/stop_gelb.gif" # Size does not matter. Should be around 376x376.
     
     # Tmm: All lengths in 1/10 mm.
-    totalWidth = 1900 / columns
+    
+    # Page layout.
+    columnWidth = 1900 / columns
+    pageHeight = 2800
     textSep = 10
     lineSep = 10
     textPointSize = 72
@@ -335,9 +339,9 @@ def buildOidTable(yamlFileName, codesYamlFileName, productId, tttool):
     if options.dpi.startswith("1200"):
         dpi *= 2
         textPointSize *= 2
-    
     toPixel = lambda x : int(x * dpi / 25.4 / 10.0)
-    totalWidthPixel = toPixel(totalWidth)
+    columnWidthPixel = toPixel(columnWidth)
+    pageHeightPixel = toPixel(pageHeight)
     textSepPixel = toPixel(textSep)
     lineSepPixel = toPixel(lineSep)
 
@@ -363,6 +367,11 @@ def buildOidTable(yamlFileName, codesYamlFileName, productId, tttool):
     boxBorderWidthPixel = toPixel(boxBorderWidthTmm)
     boxTotalWidthPixel = boxInnerWidthPixel + 2 * boxBorderWidthPixel
     boxTotalHeightPixel = boxInnerHeightPixel + 2 * boxBorderWidthPixel
+    
+    # Get number of oids per page. This depends on the box height.
+    labelTotalHeightPixel = boxTotalHeightPixel + 2 * (lineSepPixel / 2)
+    numRows = pageHeightPixel / labelTotalHeightPixel
+    numOidsPerPage = numRows * columns
     
     # Create and clear output directories.
     mkdir(oid_orig_dir)
@@ -454,7 +463,7 @@ def buildOidTable(yamlFileName, codesYamlFileName, productId, tttool):
         boxOidFileName = oid_box_dir + "/box_" + origOidFile
         labelOidFileName = oid_label_dir + "/label_" + origOidFile
         run("convert %s ( -extent %dx%d ) ( -gravity West -stroke none -pointsize %d -annotate +%d+0 %s ) -bordercolor white -compose Copy -border %d %s" % \
-        (boxOidFileName, totalWidthPixel, boxTotalHeightPixel, textPointSize, boxTotalWidthPixel + textSepPixel, name, lineSepPixel / 2, labelOidFileName))
+        (boxOidFileName, columnWidthPixel, boxTotalHeightPixel, textPointSize, boxTotalWidthPixel + textSepPixel, name, lineSepPixel / 2, labelOidFileName))
             
             
     # Generate label pages.
@@ -491,7 +500,6 @@ This tool requires:
     - tttool (must be in ../tttool)
     - convert/montage (from ImageMagick, must be on the PATH)
 """
-    version = "0.1.8"
     parser = optparse.OptionParser(usage=usage, version=version)
     parser.add_option("-t", "--build-oid-table",  default=False, action="store_true", help="Generate PNG file(s) which contain(s) all oids for this product.")
     parser.add_option("-S", "--num-start-oid",  default=3, type="int", help="For -t/--build-oid-table: Generate N START and N STOP OIDs (e.g. to re-use the same product id for multiple projects). Default is 3.")
