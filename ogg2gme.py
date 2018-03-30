@@ -20,11 +20,22 @@ import shutil
 # 2015-12-09: v0.1.6 Allow to specify the tttool location.
 # 2015-12-22: v0.1.7 Fix -t on Windows.
 # 2016-12-05: v0.1.8 Added --num-normal-oid to print a page full of power-on-symbols.
+# 2018-03-29: v0.1.9 Added custom box shapes.
     
 
 # Directory containing the ogg2gme.py script.
 scriptDir = os.path.dirname(os.path.realpath(__file__))
 dataDir = scriptDir + os.sep + "data"
+
+def castTo(val, toType, default):
+    """Convert val to toType if possible and return it.
+    
+    If the conversion fails (e.g. parse error in an integer) default is returned.
+    """
+    try:
+        return toType(val)
+    except (ValueError, TypeError):
+        return default
 
 
 def isWindows():
@@ -315,10 +326,8 @@ def buildOidTable(yamlFileName, codesYamlFileName, productId, tttool):
     powerOnFile = dataDir + "/power_on.gif" # Size does not matter. Should be around 376x376.
     stopSymbolFile = dataDir + "/stop_gelb.gif" # Size does not matter. Should be around 376x376.
     
-    # All lengths in 1/10 mm.
-    totalSize = 160
+    # Tmm: All lengths in 1/10 mm.
     totalWidth = 1900 / columns
-    border = 10
     textSep = 10
     lineSep = 10
     textPointSize = 72
@@ -328,17 +337,37 @@ def buildOidTable(yamlFileName, codesYamlFileName, productId, tttool):
         textPointSize *= 2
     
     toPixel = lambda x : int(x * dpi / 25.4 / 10.0)
-    innerSizePixel = toPixel(totalSize - 2 * border)
-    borderPixel = toPixel(border)
-    totalSizePixel = innerSizePixel + 2 * borderPixel
-    centerPixel = totalSizePixel / 2
     totalWidthPixel = toPixel(totalWidth)
     textSepPixel = toPixel(textSep)
     lineSepPixel = toPixel(lineSep)
 
+    # Get --shape "box" parameters. Parse --shape=box:WIDTH:HEIGHT:BORDER_WIDTH:BORDER_COLOR spec.
+    # Defaults:
+    boxTotalWidthTmm = 160
+    boxTotalHeightTmm = 160
+    boxBorderWidthTmm = 10
+    boxBorderColor = "red"
+    if options.shape.startswith("box:"):
+        fields = options.shape.split(":")
+        if len(fields) >= 2:
+            boxTotalWidthTmm = castTo(fields[1], int, 1)
+            boxTotalHeightTmm = boxTotalWidthTmm
+        if len(fields) >= 3:
+            boxTotalHeightTmm = castTo(fields[2], int, 1)
+        if len(fields) >= 4:
+            boxBorderWidthTmm = castTo(fields[3], int, 1)
+        if len(fields) >= 5:
+            boxBorderColor = fields[4]            
+    boxInnerWidthPixel = toPixel(boxTotalWidthTmm - 2 * boxBorderWidthTmm)
+    boxInnerHeightPixel = toPixel(boxTotalHeightTmm - 2 * boxBorderWidthTmm)
+    boxBorderWidthPixel = toPixel(boxBorderWidthTmm)
+    boxTotalWidthPixel = boxInnerWidthPixel + 2 * boxBorderWidthPixel
+    boxTotalHeightPixel = boxInnerHeightPixel + 2 * boxBorderWidthPixel
+    
+    # Create and clear output directories.
     mkdir(oid_orig_dir)
     mkdir(oid_box_dir)
-    mkdir(oid_label_dir)
+    mkdir(oid_label_dir)  # Automatically removed at the end of this function.
     removeFiles(oid_orig_dir + "/oid-*.png")
     removeFiles(oid_box_dir + "/box_oid-*.png")
     removeFiles(oid_label_dir + "/label_oid-*.png")
@@ -403,30 +432,29 @@ def buildOidTable(yamlFileName, codesYamlFileName, productId, tttool):
         if re.search("^oid-[0-9]+-START.png$", origOidFile):
             # Green power-on symbol.
             run("convert ( -page +0+0 %s -resize %dx%d -page +0+0 %s -flatten ) ( %s -resize %dx%d -alpha extract ) -alpha Off -compose CopyOpacity -composite %s" % \
-            (powerOnFile, totalSizePixel, totalSizePixel, origOidFileName, powerOnFile, totalSizePixel, totalSizePixel, boxOidFileName))
+            (powerOnFile, boxTotalWidthPixel, boxTotalHeightPixel, origOidFileName, powerOnFile, boxTotalWidthPixel, boxTotalHeightPixel, boxOidFileName))
         elif re.search("^oid-[0-9]+-STOP.png$", origOidFile):
             # Stop symbol.
             run("convert ( -page +0+0 %s -resize %dx%d -page +0+0 %s -flatten ) ( %s -resize %dx%d -alpha extract ) -alpha Off -compose CopyOpacity -composite %s" % \
-            (stopSymbolFile, totalSizePixel, totalSizePixel, origOidFileName, powerOnFile, totalSizePixel, totalSizePixel, boxOidFileName))
+            (stopSymbolFile, boxTotalWidthPixel, boxTotalHeightPixel, origOidFileName, powerOnFile, boxTotalWidthPixel, boxTotalHeightPixel, boxOidFileName))
+        elif options.shape.startswith("box:") or options.shape == "box":
+            # Red box or custom box.            
+            run("convert %s ( -crop %dx%d+0+0 +repage -density 600x600 ) -bordercolor %s -compose Copy -border %d %s" % \
+            (origOidFileName, boxInnerWidthPixel, boxInnerHeightPixel, boxBorderColor, boxBorderWidthPixel, boxOidFileName))
         else:
-            # Normal object: Red box or shape.
-            if options.shape == "box":                    
-                run("convert %s ( -crop %dx%d+0+0 +repage -density 600x600 ) -bordercolor red -compose Copy -border %d %s" % \
-                (origOidFileName, innerSizePixel, innerSizePixel, borderPixel, boxOidFileName))
-            else:
-                shapeFile = dataDir + "/" + options.shape
-                run("convert ( -page +0+0 %s -resize %dx%d -page +0+0 %s -flatten ) ( %s -resize %dx%d -alpha extract ) -alpha Off -compose CopyOpacity -composite %s" % \
-                (shapeFile, totalSizePixel, totalSizePixel, origOidFileName, shapeFile, totalSizePixel, totalSizePixel, boxOidFileName))
+            # Shape file in "data" dir.
+            shapeFile = dataDir + "/" + options.shape
+            run("convert ( -page +0+0 %s -resize %dx%d -page +0+0 %s -flatten ) ( %s -resize %dx%d -alpha extract ) -alpha Off -compose CopyOpacity -composite %s" % \
+            (shapeFile, boxTotalWidthPixel, boxTotalHeightPixel, origOidFileName, shapeFile, boxTotalWidthPixel, boxTotalHeightPixel, boxOidFileName))
                     
-                
-        
+
     # Generate labels.
     for origOidFile in origOidFiles:
         name = oidFileNameToName[origOidFile]
         boxOidFileName = oid_box_dir + "/box_" + origOidFile
         labelOidFileName = oid_label_dir + "/label_" + origOidFile
         run("convert %s ( -extent %dx%d ) ( -gravity West -stroke none -pointsize %d -annotate +%d+0 %s ) -bordercolor white -compose Copy -border %d %s" % \
-        (boxOidFileName, totalWidthPixel, totalSizePixel, textPointSize, totalSizePixel + textSepPixel, name, lineSepPixel / 2, labelOidFileName))
+        (boxOidFileName, totalWidthPixel, boxTotalHeightPixel, textPointSize, boxTotalWidthPixel + textSepPixel, name, lineSepPixel / 2, labelOidFileName))
             
             
     # Generate label pages.
@@ -452,7 +480,9 @@ Convert all *.ogg files found in the current directory into a Tip-Toi *.gme file
 optionally (-t) a _oid-table0.png file which contains the OID labels.
 
 This tool is useful when generating simple OID labels, each associated with one sample.
-Example: adding Tip-Toi support to non-Tip-Toi books.
+Examples: 
+    - Adding Tip-Toi support to non-Tip-Toi books.
+    - Audio CDs.
 
 The generated *.yaml file can be edited at any time and is not overwritten by this tool.
 This tool always adds samples to the *.yaml file which are not yet in the *.yaml file.
@@ -470,7 +500,7 @@ This tool requires:
     parser.add_option("-N", "--num-additional-oids",  default=10, type="int", help="For -t/--build-oid-table: This tool always fills whole pages with additional OIDs (additional to the OIDs for the named OIDs from the *.yaml file). This parameter sets the minimum amount of additional OIDs. Default is 10.")
     parser.add_option("-d", "--dpi",  default="600d", type="string", help="For -t/--build-oid-table: DPI setting for tttool, used to generate the OIDs. Must be either 600, 600d, 1200 or 1200d. The d variants double the pixel size. Default is 600d.")
     parser.add_option("-p", "--product-id",  type=int, default=0, help="Set product-id. This only has an effect when generating the *.yaml file for the first time. Once the *.yaml file exists please edit the product-id in the *.yaml file directly.")
-    parser.add_option("-s", "--shape",  type=str, default="box", help="Set shape for objects. Must be either box (default) or one of the files in 'data' (anleitung_gelb.gif play_gelb.gif stern_gelb.gif stern_orange.gif).")    
+    parser.add_option("-s", "--shape",  type=str, default="box", help="Set shape for oid images: Must be either box (default) or box:WIDTH:HEIGHT:BORDER_THICKNESS:BORDER_COLOR or one of the files in 'data' (anleitung_gelb.gif play_gelb.gif stern_gelb.gif stern_orange.gif).")    
     parser.add_option("-T", "--tttool",  type=str, default="", help="Set name of the tttool executable. Default is tttool.exe on Windows and tttool on all other oses. The executable is always searched in the parent dirs.")
     parser.add_option("-v", "--verbose",  default=0, action="count", help="Be more verbose.")
     (options, args) = parser.parse_args()
