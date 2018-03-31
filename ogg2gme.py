@@ -23,6 +23,7 @@ version = "0.1.9"
 # 2015-12-22: v0.1.7 Fix -t on Windows.
 # 2016-12-05: v0.1.8 Added --num-normal-oid to print a page full of power-on-symbols.
 # 2018-03-29: v0.1.9 Added custom box shapes.
+# 2018-03-31: v0.1.10 Fixed blurred start symbol in Word. (Hopefully. Start ans stop Symbol now have just 3 colors plus transparency.)
     
 
 # Directory containing the ogg2gme.py script.
@@ -435,17 +436,18 @@ def buildOidTable(yamlFileName, codesYamlFileName, productId, tttool):
                     print "Ignoring PNG %s" % fileName
 
     # Generate boxes or shapes.
+    resize_op = "-sample" # -sample duplicates/deletes whole rows/columns and does not add new colors. This is desirable as we want to keep the output images with a low number of colors to prevent Word from re-dithering them.
     for origOidFile in origOidFiles:
         origOidFileName = oid_orig_dir + "/" + origOidFile
         boxOidFileName = oid_box_dir + "/box_" + origOidFile
         if re.search("^oid-[0-9]+-START.png$", origOidFile):
             # Green power-on symbol.
-            run("convert ( -page +0+0 %s -resize %dx%d -page +0+0 %s -flatten ) ( %s -resize %dx%d -alpha extract ) -alpha Off -compose CopyOpacity -composite %s" % \
-            (powerOnFile, boxTotalWidthPixel, boxTotalHeightPixel, origOidFileName, powerOnFile, boxTotalWidthPixel, boxTotalHeightPixel, boxOidFileName))
+            run("convert ( -page +0+0 %s %s %dx%d -page +0+0 %s -flatten ) ( %s %s %dx%d -alpha extract ) -alpha Off -compose CopyOpacity -composite %s" % \
+            (powerOnFile, resize_op, boxTotalWidthPixel, boxTotalHeightPixel, origOidFileName, powerOnFile, resize_op, boxTotalWidthPixel, boxTotalHeightPixel, boxOidFileName))
         elif re.search("^oid-[0-9]+-STOP.png$", origOidFile):
             # Stop symbol.
-            run("convert ( -page +0+0 %s -resize %dx%d -page +0+0 %s -flatten ) ( %s -resize %dx%d -alpha extract ) -alpha Off -compose CopyOpacity -composite %s" % \
-            (stopSymbolFile, boxTotalWidthPixel, boxTotalHeightPixel, origOidFileName, powerOnFile, boxTotalWidthPixel, boxTotalHeightPixel, boxOidFileName))
+            run("convert ( -page +0+0 %s %s %dx%d -page +0+0 %s -flatten ) ( %s %s %dx%d -alpha extract ) -alpha Off -compose CopyOpacity -composite %s" % \
+            (stopSymbolFile, resize_op, boxTotalWidthPixel, boxTotalHeightPixel, origOidFileName, stopSymbolFile, resize_op, boxTotalWidthPixel, boxTotalHeightPixel, boxOidFileName))
         elif options.shape.startswith("box:") or options.shape == "box":
             # Red box or custom box.            
             run("convert %s ( -crop %dx%d+0+0 +repage -density 600x600 ) -bordercolor %s -compose Copy -border %d %s" % \
@@ -453,8 +455,8 @@ def buildOidTable(yamlFileName, codesYamlFileName, productId, tttool):
         else:
             # Shape file in "data" dir.
             shapeFile = dataDir + "/" + options.shape
-            run("convert ( -page +0+0 %s -resize %dx%d -page +0+0 %s -flatten ) ( %s -resize %dx%d -alpha extract ) -alpha Off -compose CopyOpacity -composite %s" % \
-            (shapeFile, boxTotalWidthPixel, boxTotalHeightPixel, origOidFileName, shapeFile, boxTotalWidthPixel, boxTotalHeightPixel, boxOidFileName))
+            run("convert ( -page +0+0 %s %s %dx%d -page +0+0 %s -flatten ) ( %s %s %dx%d -alpha extract ) -alpha Off -compose CopyOpacity -composite %s" % \
+            (shapeFile, resize_op, boxTotalWidthPixel, boxTotalHeightPixel, origOidFileName, shapeFile, resize_op, boxTotalWidthPixel, boxTotalHeightPixel, boxOidFileName))
                     
 
     # Generate labels.
