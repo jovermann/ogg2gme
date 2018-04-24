@@ -516,6 +516,8 @@ This tool requires:
     (options, args) = parser.parse_args()
 
     if len(args) != 0:
+        for arg in args:
+            print "(got non-option arg '%s')" % arg
 	parser.error("Not expecting any non-option args.")
 
     try:
